@@ -13,7 +13,7 @@ class OnDisconnectRequested
 public:
     OnDisconnectRequested(UsageEnvironment *env);
 
-    void operator()(std::string streamId);
+    void operator()(std::string nameToDisconnect);
 };
 
 

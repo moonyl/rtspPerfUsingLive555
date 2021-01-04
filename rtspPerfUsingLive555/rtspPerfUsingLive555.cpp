@@ -11,6 +11,7 @@
 #include "PerfCheckRtspClient.h"
 #include "OnConnectRequested.h"
 #include "OnRemoveOneRequested.h"
+#include "OnDisconnectRequested.h"
 #include "RawStreamPerfCheckSink.h"
 
 using namespace std;
@@ -25,10 +26,15 @@ struct RtspConnectInfo
     std::string password;
 };
 
-static void calculateStatics(void* clientData);
-
-int main()
+static void calculateStatics(void *clientData);
+static double InputFps = 30.0;
+int main(int argc, char* argv[])
 {
+    if (argc > 1)   {
+        std::string fps{argv[1]};
+        InputFps = std::stod(fps);
+        //std::cout << InputFps;
+    }
     // Increase the maximum size of video frames that we can 'proxy' without truncation.
     // (Such frames are unreasonably large; the back-end servers should really not be sending frames this large!)
     //OutPacketBuffer::maxSize = 700000; // bytes
@@ -52,13 +58,13 @@ int main()
     OnRemoveOneRequested onRemoveOneRequested{env};
     scheduler->addRemoveOneListener(onRemoveOneRequested);
 
-//    OnDisconnectRequested onConnectRequested{env};
-//    scheduler->addDisconnectListener(onStreamRemoved);
+    OnDisconnectRequested onDisconnectRequested{env};
+    scheduler->addDisconnectListener(onDisconnectRequested);
 
     // Now, enter the event loop:
     std::thread rtspTaskThread([env]() {
-        int64_t uSecsToDelay = 3+1000*1000;
-        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)calculateStatics, env);
+        int64_t uSecsToDelay = 3 + 1000 * 1000;
+        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatics, env);
         env->taskScheduler().doEventLoop(); // does not return
     });
 
@@ -68,7 +74,7 @@ int main()
         if (request.compare("quit") == 0) {
             break;
         }
-        if (request.compare("removeOne") == 0)  {
+        if (request.compare("removeOne") == 0) {
             q.push({TaskCommand::RemoveOne});
             continue;
         }
@@ -77,7 +83,13 @@ int main()
             //auto requestCompare = "{\"url\":\"rtsp://192.168.15.105:554/onvif/profile3/media.smp\", \"user\":\"admin\", \"password\":\"q1w2e3r4@\"}";
             //std::cout << request.compare(requestCompare) << std::endl;
             auto jsonObj = json::parse(request);
-            if (jsonObj["url"].is_null())   {
+            if (jsonObj["disconnect"].is_string()) {
+                auto const nameToDisconnect = jsonObj["disconnect"].get<std::string>();
+                q.push({TaskCommand::Disconnect, nameToDisconnect});
+                continue;
+            }
+
+            if (jsonObj["url"].is_null()) {
                 continue;
             }
             auto const url = jsonObj["url"].get<std::string>();
@@ -95,6 +107,7 @@ int main()
     q.push({TaskCommand::Quit});
 
     rtspTaskThread.join();
+    std::cout << "perf tester finished";
 
     return 0;
 }
@@ -102,8 +115,10 @@ int main()
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <iostream>
-void calculateStatics(void* clientData) {
-    UsageEnvironment* env = static_cast<UsageEnvironment*>(clientData);
+
+void calculateStatics(void *clientData)
+{
+    UsageEnvironment *env = static_cast<UsageEnvironment *>(clientData);
 
     static std::chrono::system_clock::time_point intervalStart = std::chrono::system_clock::now();
     std::chrono::duration<double> sec = std::chrono::system_clock::now() - intervalStart;
@@ -111,43 +126,46 @@ void calculateStatics(void* clientData) {
     if (sec.count() > interval) {
         int totalFrame = 0;
 
-        auto & table = MediaLookupTable::ourMedia(*env)->getTable();
-        HashTable::Iterator* iter = HashTable::Iterator::create(table);
-        char const* key;
-        void* value;
-        do {
-            value = iter->next(key);
-            if (value != nullptr)    {
-                Medium* medium;
-                auto found = Medium::lookupByName(*env, key, medium);
-                if (found)  {
-                    if (medium->isSink()) {
-                        RawStreamPerfCheckSink* sink = static_cast<RawStreamPerfCheckSink*>(medium);
-                        totalFrame += sink->frameCount;
-                        auto const frPerCh = sink->frameCount / sec.count();
-                        if (frPerCh < 10)  {
-                            using json = nlohmann::json;
-                            json j;
-                            j["name"] = sink->name();
-                            j["frameRatePerCh"] = round(frPerCh*10)/10;
+        auto &table = MediaLookupTable::ourMedia(*env)->getTable();
+        HashTable::Iterator *iter = HashTable::Iterator::create(table);
+        char const *key;
+        void *value;
 
-                            std::cout << j.dump() << std::endl;
-                            //std::cout << "name: " << sink->name() << ", " << sink->frameCount / sec.count() << std::endl;
-                        }
-                        sink->frameCount = 0;
+        int clientCount = 0;
+        while ((value = iter->next(key)) != nullptr) {
+            Medium *medium;
+            auto found = Medium::lookupByName(*env, key, medium);
+            if (found) {
+                if (medium->isRTSPClient()) {
+                    clientCount++;
+
+                    auto *sink = (static_cast<PerfCheckRtspClient *>(medium))->perfSink();
+                    totalFrame += sink->frameCount;
+                    auto const frPerCh = sink->frameCount / sec.count();
+
+                    if (frPerCh < 10)   {
+                        using json = nlohmann::json;
+                        json j;
+                        j["name"] = medium->name();
+                        j["frameRatePerCh"] = round(frPerCh * 10) / 10;
+                        j["elapsed"] = sink->elapsed().count();
+
+                        std::cout << j.dump() << std::endl;
                     }
+
+                    sink->frameCount = 0;
                 }
             }
-        } while(value != nullptr);
-
+        }
 
         auto const frameRate = totalFrame / sec.count();
         using json = nlohmann::json;
         json j;
         //j["name"] = source()->name();
-        j["connect"] = PerfCheckRtspClient::rtspClientCount;
-        j["measuredFrameRate"] = round(frameRate*10)/10;
-        j["expected"] = round(PerfCheckRtspClient::rtspClientCount * 23.9 * 10)/10;
+        j["counted"] = clientCount;
+//        j["connect"] = PerfCheckRtspClient::rtspClientCount;
+        j["measuredFrameRate"] = round(frameRate * 10) / 10;
+        j["expected"] = round(PerfCheckRtspClient::rtspClientCount * InputFps * 10) / 10;
         std::cout << j.dump() << std::endl;
 
         //RawStreamPerfCheckSink::frameCount = 0;
@@ -155,7 +173,7 @@ void calculateStatics(void* clientData) {
     }
 
 
-    int64_t uSecsToDelay = 3+1000*1000;
+    int64_t uSecsToDelay = 3 + 1000 * 1000;
 
-    env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)calculateStatics, env);
+    env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatics, env);
 }

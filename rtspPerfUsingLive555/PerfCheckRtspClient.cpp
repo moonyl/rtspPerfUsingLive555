@@ -218,8 +218,11 @@ void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultStri
 //                int64_t uSecsToDelay = 3+1000*1000;
 //                env.taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)calculateStatics, rtspClient);
 //            }
-            scs.subsession->sink = RawStreamPerfCheckSink::createNew(env, *scs.subsession, rtspClient->url());
-            env << "fps: " << scs.subsession->videoFPS() << "\n";
+            auto* sink = RawStreamPerfCheckSink::createNew(env, *scs.subsession, rtspClient->url());
+            PerfCheckRtspClient* client = dynamic_cast<PerfCheckRtspClient*>(rtspClient);
+            client->setPerfSink(sink);
+            scs.subsession->sink = sink;
+            //env << "fps: " << scs.subsession->videoFPS() << "\n";
         } else {
 //            env << *rtspClient << "don't care of the \"" << *scs.subsession
 //                << "\" subsession: " << "\n";
@@ -232,6 +235,8 @@ void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultStri
                 << "\" subsession: " << env.getResultMsg() << "\n";
             break;
         }
+
+
 
 //        env << *rtspClient << "Created a data sink for the \"" << *scs.subsession << "\" subsession\n";
         scs.subsession->miscPtr = rtspClient; // a hack to let subsession handler functions get the "RTSPClient" from the subsession

@@ -27,15 +27,7 @@ void OnRemoveOneRequested::operator()()
                     shutdownStream(client);
                     break;
                 }
-//                *env << "isSource: " << medium->isSource() << ", isSink: " << medium->isSink()
-//                    << ", isRTCPInstance: " << medium->isRTCPInstance()
-//                    << ", isRTSPClient: " << medium->isRTSPClient()
-//                    << ", isRTSPServer: " << medium->isRTSPServer()
-//                    << ", isMediaSession: " << medium->isMediaSession()
-//                    << ", isServerMediaSession: " << medium->isServerMediaSession() << "\n";
             }
-//            *env << "key: " << key << "\n";
-//            *env << "entries: " << table.numEntries() << "\n";
         }
     } while(value != nullptr);
 }

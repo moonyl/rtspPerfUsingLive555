@@ -75,4 +75,6 @@ RawStreamPerfCheckSink::RawStreamPerfCheckSink(UsageEnvironment &env,
                                                MediaSink(env),  fSubsession(subsession) {
     fStreamId = strDup(streamId);
     fReceiveBuffer = new u_int8_t[DUMMY_SINK_RECEIVE_BUFFER_SIZE];
+    startPoint = std::chrono::system_clock::now();
+
 }

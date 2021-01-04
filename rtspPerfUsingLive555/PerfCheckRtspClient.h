@@ -5,6 +5,7 @@
 #pragma once
 
 #include <liveMedia.hh>
+#include "RawStreamPerfCheckSink.h"
 
 class StreamClientState {
 public:
@@ -20,12 +21,16 @@ public:
 };
 
 class PerfCheckRtspClient: public RTSPClient {
+
+    RawStreamPerfCheckSink* videoSink{nullptr};
 public:
     static PerfCheckRtspClient* createNew(UsageEnvironment& env, char const* rtspURL,
                                     int verbosityLevel = 0,
                                     char const* applicationName = nullptr,
                                     char const* user = nullptr, char const *password = nullptr,
                                     portNumBits tunnelOverHTTPPortNum = 0);
+    void setPerfSink(RawStreamPerfCheckSink* sink) { videoSink = sink; }
+    RawStreamPerfCheckSink* perfSink() const { return videoSink; }
 
 protected:
     PerfCheckRtspClient(UsageEnvironment& env, char const* rtspURL, char const *user, char const *password,
@@ -36,6 +41,7 @@ protected:
 public:
     StreamClientState scs;
     static unsigned int rtspClientCount;
+
 };
 
 void openURL(UsageEnvironment& env, char const* progName, char const* rtspURL,

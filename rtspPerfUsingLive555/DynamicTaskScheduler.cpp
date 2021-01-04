@@ -27,8 +27,8 @@ void DynamicTaskScheduler::doEventLoop(volatile char* watchVariable) {
                 _onRemoveOneSignal();
             }
             else if (command.type == TaskCommand::Disconnect) {
-                // TODO : how to disconnect
-                //_onDisconnectSignal(command.streamId);
+
+                _onDisconnectSignal(command.url);
             }
             else if (command.type == TaskCommand::Quit) {
                 std::cerr << "Thread finished" << std::endl;
