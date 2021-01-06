@@ -49,14 +49,14 @@ unsigned int PerfCheckRtspClient::rtspClientCount = 0; // Counts how many stream
 
 static void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString);
 
-void openURL(UsageEnvironment& env, char const* progName, char const* rtspURL, char const *user, char const *password) {
+RTSPClient* openURL(UsageEnvironment& env, char const* progName, char const* rtspURL, char const *user, char const *password) {
     // Begin by creating a "RTSPClient" object.  Note that there is a separate "RTSPClient" object for each stream that we wish
     // to receive (even if more than stream uses the same "rtsp://" URL).
     RTSPClient* rtspClient = PerfCheckRtspClient::createNew(env, rtspURL, RTSP_CLIENT_VERBOSITY_LEVEL, progName,
                                                             user, password);
     if (rtspClient == NULL) {
         env << "Failed to create a RTSP client for URL \"" << rtspURL << "\": " << env.getResultMsg() << "\n";
-        return;
+        return nullptr;
     }
 
     ++PerfCheckRtspClient::rtspClientCount;
@@ -65,6 +65,7 @@ void openURL(UsageEnvironment& env, char const* progName, char const* rtspURL, c
     // Note that this command - like all RTSP commands - is sent asynchronously; we do not block, waiting for a response.
     // Instead, the following function call returns immediately, and we handle the RTSP response later, from within the event loop:
     rtspClient->sendDescribeCommand(continueAfterDESCRIBE);
+    return rtspClient;
 }
 
 
@@ -146,6 +147,10 @@ void setupNextSubsession(RTSPClient* rtspClient) {
     }
 }
 
+#include <nlohmann/json.hpp>
+#include <iostream>
+#include <exception>
+
 void shutdownStream(RTSPClient* rtspClient, int exitCode) {
     UsageEnvironment& env = rtspClient->envir(); // alias
     StreamClientState& scs = ((PerfCheckRtspClient*)rtspClient)->scs; // alias
@@ -174,6 +179,23 @@ void shutdownStream(RTSPClient* rtspClient, int exitCode) {
             // Don't bother handling the response to the "TEARDOWN".
             rtspClient->sendTeardownCommand(*scs.session, NULL);
         }
+    }
+
+    try {
+        using json = nlohmann::json;
+        json state;
+
+        state["name"] = rtspClient->name();
+        state["url"] = rtspClient->url();
+        state["byUser"] = exitCode == 0;
+
+        json j;
+        j["result"] = "disconnected";
+        j["state"] = state;
+        std::cout << j.dump() << std::endl;
+    } catch(std::exception &e)   {
+        env << "exception, closing: name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
+        env << e.what() << "\n";
     }
 
     env << *rtspClient << "Closing the stream.\n";
@@ -322,6 +344,22 @@ void continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultStrin
         env << "...\n";
 
         success = True;
+
+        try {
+            using json = nlohmann::json;
+            json j;
+            j["result"] = "added";
+            json state;
+            state["name"] = rtspClient->name();
+            state["url"] = rtspClient->url();
+            j["state"] = state;
+
+            std::cout << j.dump() << std::endl;
+        } catch(std::exception &e)  {
+            env << "exception, client added, name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
+            env << e.what() << "\n";
+        }
+
     } while (0);
     delete[] resultString;
 

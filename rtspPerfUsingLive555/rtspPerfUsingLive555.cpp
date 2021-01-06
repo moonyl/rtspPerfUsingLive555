@@ -13,6 +13,7 @@
 #include "OnRemoveOneRequested.h"
 #include "OnDisconnectRequested.h"
 #include "RawStreamPerfCheckSink.h"
+#include "Statistics.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -26,13 +27,14 @@ struct RtspConnectInfo
     std::string password;
 };
 
-static void calculateStatics(void *clientData);
-static double InputFps = 30.0;
+
 int main(int argc, char* argv[])
 {
+    //std::cout << "check: " << RTSPClient::responseBufferSize << std::endl;
+    RTSPClient::responseBufferSize = 40000;
     if (argc > 1)   {
         std::string fps{argv[1]};
-        InputFps = std::stod(fps);
+        Statistics::InputFps = std::stod(fps);
         //std::cout << InputFps;
     }
     // Increase the maximum size of video frames that we can 'proxy' without truncation.
@@ -64,43 +66,69 @@ int main(int argc, char* argv[])
     // Now, enter the event loop:
     std::thread rtspTaskThread([env]() {
         int64_t uSecsToDelay = 3 + 1000 * 1000;
-        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatics, env);
+        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) Statistics::calculateStatistics, env);
         env->taskScheduler().doEventLoop(); // does not return
     });
 
     std::string request;
     do {
         std::getline(std::cin, request);
-        if (request.compare("quit") == 0) {
-            break;
-        }
-        if (request.compare("removeOne") == 0) {
-            q.push({TaskCommand::RemoveOne});
-            continue;
-        }
         try {
             //std::cout << request;
             //auto requestCompare = "{\"url\":\"rtsp://192.168.15.105:554/onvif/profile3/media.smp\", \"user\":\"admin\", \"password\":\"q1w2e3r4@\"}";
             //std::cout << request.compare(requestCompare) << std::endl;
             auto jsonObj = json::parse(request);
-            if (jsonObj["disconnect"].is_string()) {
-                auto const nameToDisconnect = jsonObj["disconnect"].get<std::string>();
-                q.push({TaskCommand::Disconnect, nameToDisconnect});
-                continue;
+            if (jsonObj["cmd"].is_string()) {
+                auto const cmd = jsonObj["cmd"].get<std::string>();
+                if (cmd == "quit") {
+                    break;
+                }
+                if (cmd == "removeOne")   {
+                    q.push({TaskCommand::RemoveOne});
+                    continue;
+                }
+                if (cmd == "add") {
+                    if (jsonObj["param"].is_object())   {
+                        const auto param = jsonObj["param"].get<json>();
+                        if (!param.contains("url"))  {
+                            continue;
+                        }
+                        auto const url = param["url"].get<std::string>();
+                        if (!url.empty()) {
+                            auto const user = param.contains("user") ? param["user"].get<std::string>() : "" ;
+                            auto const password = param.contains("password") ? param["password"].get<std::string>() : "";
+                            q.push({TaskCommand::Connect, url, user, password});
+                        }
+                    }
+                    continue;
+                }
+                if (cmd == "disconnect")    {
+                    if (jsonObj["param"].is_string()) {
+                        auto const nameToDisconnect = jsonObj["param"].get<std::string>();
+                        q.push({TaskCommand::Disconnect, nameToDisconnect});
+                    }
+                    continue;
+                }
             }
+//
+//            if (jsonObj["disconnect"].is_string()) {
+//                auto const nameToDisconnect = jsonObj["disconnect"].get<std::string>();
+//                q.push({TaskCommand::Disconnect, nameToDisconnect});
+//                continue;
+//            }
 
-            if (jsonObj["url"].is_null()) {
-                continue;
-            }
-            auto const url = jsonObj["url"].get<std::string>();
-            if (!url.empty()) {
-                auto const user = jsonObj["user"].is_null() ? "" : jsonObj["user"].get<std::string>();
-                auto const password = jsonObj["password"].is_null() ? "" : jsonObj["password"].get<std::string>();
-                q.push({TaskCommand::Connect, url, user, password});
-            }
+
+//            auto const url = jsonObj["url"].get<std::string>();
+//            if (!url.empty()) {
+//                auto const user = jsonObj["user"].is_null() ? "" : jsonObj["user"].get<std::string>();
+//                auto const password = jsonObj["password"].is_null() ? "" : jsonObj["password"].get<std::string>();
+//                q.push({TaskCommand::Connect, url, user, password});
+//            }
 
         } catch (jsonException &e) {
-            std::cerr << e.what();
+            std::cerr << "exception, " << __func__ << ", " << __LINE__ << "\n";
+            std::cerr << "request: " << request << "\n";
+            std::cerr << e.what() << "\n";
         }
     } while (true);
 
@@ -112,68 +140,4 @@ int main(int argc, char* argv[])
     return 0;
 }
 
-#include <chrono>
-#include <nlohmann/json.hpp>
-#include <iostream>
 
-void calculateStatics(void *clientData)
-{
-    UsageEnvironment *env = static_cast<UsageEnvironment *>(clientData);
-
-    static std::chrono::system_clock::time_point intervalStart = std::chrono::system_clock::now();
-    std::chrono::duration<double> sec = std::chrono::system_clock::now() - intervalStart;
-    int const interval = 3;
-    if (sec.count() > interval) {
-        int totalFrame = 0;
-
-        auto &table = MediaLookupTable::ourMedia(*env)->getTable();
-        HashTable::Iterator *iter = HashTable::Iterator::create(table);
-        char const *key;
-        void *value;
-
-        int clientCount = 0;
-        while ((value = iter->next(key)) != nullptr) {
-            Medium *medium;
-            auto found = Medium::lookupByName(*env, key, medium);
-            if (found) {
-                if (medium->isRTSPClient()) {
-                    clientCount++;
-
-                    auto *sink = (static_cast<PerfCheckRtspClient *>(medium))->perfSink();
-                    totalFrame += sink->frameCount;
-                    auto const frPerCh = sink->frameCount / sec.count();
-
-                    if (frPerCh < 10)   {
-                        using json = nlohmann::json;
-                        json j;
-                        j["name"] = medium->name();
-                        j["frameRatePerCh"] = round(frPerCh * 10) / 10;
-                        j["elapsed"] = sink->elapsed().count();
-
-                        std::cout << j.dump() << std::endl;
-                    }
-
-                    sink->frameCount = 0;
-                }
-            }
-        }
-
-        auto const frameRate = totalFrame / sec.count();
-        using json = nlohmann::json;
-        json j;
-        //j["name"] = source()->name();
-        j["counted"] = clientCount;
-//        j["connect"] = PerfCheckRtspClient::rtspClientCount;
-        j["measuredFrameRate"] = round(frameRate * 10) / 10;
-        j["expected"] = round(PerfCheckRtspClient::rtspClientCount * InputFps * 10) / 10;
-        std::cout << j.dump() << std::endl;
-
-        //RawStreamPerfCheckSink::frameCount = 0;
-        intervalStart = std::chrono::system_clock::now();
-    }
-
-
-    int64_t uSecsToDelay = 3 + 1000 * 1000;
-
-    env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatics, env);
-}

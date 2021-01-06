@@ -44,7 +44,7 @@ public:
 
 };
 
-void openURL(UsageEnvironment& env, char const* progName, char const* rtspURL,
+RTSPClient* openURL(UsageEnvironment& env, char const* progName, char const* rtspURL,
              char const *user = nullptr, char const *password = nullptr);
 
 

@@ -5,6 +5,8 @@
 #include "OnDisconnectRequested.h"
 #include <liveMedia.hh>
 #include "PerfCheckRtspClient.h"
+#include <nlohmann/json.hpp>
+#include <iostream>
 
 OnDisconnectRequested::OnDisconnectRequested(UsageEnvironment *env): env(env)
 {
@@ -21,7 +23,7 @@ void OnDisconnectRequested::operator()(std::string nameToDisconnect)
         if (medium->isRTSPClient()) {
             RTSPClient *client = static_cast<RTSPClient *>(medium);
             *env << "shutdown stream\n";
-            shutdownStream(client);
+            shutdownStream(client, 0);
         }
     }
 }

@@ -19,10 +19,13 @@ find_path(live555Header UsageEnvironment.hh REQUIRED)
 #message(${liveMediaLib} ${groupsockLib} ${UsageEnvironmentLib} ${BasicUsageEnvironmentLib})
 
 # 이 프로젝트의 실행 파일에 소스를 추가합니다.
-add_executable (rtspPerfUsingLive555 "rtspPerfUsingLive555.cpp"  "DynamicTaskScheduler.h" "DynamicTaskScheduler.cpp" "TaskCommand.h" PerfCheckRtspClient.cpp PerfCheckRtspClient.h RawStreamPerfCheckSink.cpp RawStreamPerfCheckSink.h OnConnectRequested.cpp OnConnectRequested.h OnDisconnectRequested.cpp OnDisconnectRequested.h OnRemoveOneRequested.cpp OnRemoveOneRequested.h)
+add_executable (rtspPerfUsingLive555 "rtspPerfUsingLive555.cpp"  "DynamicTaskScheduler.h" "DynamicTaskScheduler.cpp" "TaskCommand.h" PerfCheckRtspClient.cpp PerfCheckRtspClient.h RawStreamPerfCheckSink.cpp RawStreamPerfCheckSink.h OnConnectRequested.cpp OnConnectRequested.h OnDisconnectRequested.cpp OnDisconnectRequested.h OnRemoveOneRequested.cpp OnRemoveOneRequested.h Statistics.cpp Statistics.h)
+if (WIN32)
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif(WIN32)
+
 #get_target_property(OpenSSL_LOCATION OpenSSL LOCATION)
-message(${LIB_EAY_RELEASE})
+message(STATUS ${LIB_EAY_RELEASE})
 set(rtspPerfUsingLive555 	
 	${liveMediaLib} 
 	${BasicUsageEnvironmentLib}
@@ -52,6 +55,7 @@ else()
 	set (SEARCH_PATH ${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin/)
 endif()
 
+if (WIN32)
 find_file(openssl_ssl
 		libssl-1_1-x64.dll
 		PATHS ${SEARCH_PATH}
@@ -62,6 +66,8 @@ find_file(openssl_crypto
 		)
 message(${SEARCH_PATH})
 message("${openssl_ssl} ${openssl_crypto}")
+endif(WIN32)
+
 # TODO: 필요한 경우 테스트를 추가하고 대상을 설치합니다.
 install(TARGETS rtspPerfUsingLive555
 		RUNTIME
