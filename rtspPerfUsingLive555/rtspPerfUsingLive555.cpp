@@ -14,9 +14,12 @@
 #include "OnDisconnectRequested.h"
 #include "RawStreamPerfCheckSink.h"
 #include "Statistics.h"
+#include "RemoteCommandInterpreter.h"
+#include "LocalCommandInterpreter.h"
+#include "PerformanceEnvironment.h"
 
 using namespace std;
-using json = nlohmann::json;
+
 using jsonException = nlohmann::detail::exception;
 
 struct RtspConnectInfo
@@ -27,6 +30,68 @@ struct RtspConnectInfo
     std::string password;
 };
 
+#include <deque>
+
+void listClients(void *clientData) {
+    //std::cout << __func__ << std::endl;
+    UsageEnvironment *env = static_cast<UsageEnvironment*>(clientData);
+
+    auto &table = MediaLookupTable::ourMedia(*env)->getTable();
+    HashTable::Iterator *iter = HashTable::Iterator::create(table);
+    char const *key;
+    void *value;
+
+    int clientCount = 0;
+    std::map<std::string, std::list<std::string>> urlBasedNames;
+    std::cout << "\n============== client list ===================\n";
+    while ((value = iter->next(key)) != nullptr) {
+        Medium *medium;
+        auto found = Medium::lookupByName(*env, key, medium);
+        if (found) {
+            if (medium->isRTSPClient()) {
+                PerfCheckRtspClient* client = static_cast<PerfCheckRtspClient*>(medium);
+                std::cout << "name: " << client->name() << ", url: " << client->url()
+                    << ", frameRate: " << client->perfSink()->frameRate() << std::endl;
+                if (urlBasedNames.count(std::string(client->url()))) {
+                    urlBasedNames.at(std::string(client->url())).push_back(client->name());
+                } else {
+                    urlBasedNames[std::string(client->url())] = std::list<std::string>{client->name()};
+                }
+            }
+        }
+    }
+    std::cout << "\n============== url base ===================\n";
+    for (auto const& item : urlBasedNames)   {
+        std::cout << "url: " << item.first << ", count: " << item.second.size() << ", [ ";
+        for (auto const &value: item.second)    {
+            std::cout << value << ", ";
+        }
+        std::cout << "]" << std::endl;
+    }
+}
+
+void removeAllClients(void *clientData) {
+    UsageEnvironment *env = static_cast<UsageEnvironment*>(clientData);
+
+    auto &table = MediaLookupTable::ourMedia(*env)->getTable();
+    HashTable::Iterator *iter = HashTable::Iterator::create(table);
+    char const *key;
+    void *value;
+
+    int clientCount = 0;
+    std::map<std::string, std::list<std::string>> urlBasedNames;
+    std::cout << "\n============== client list ===================\n";
+    while ((value = iter->next(key)) != nullptr) {
+        Medium *medium;
+        auto found = Medium::lookupByName(*env, key, medium);
+        if (found) {
+            if (medium->isRTSPClient()) {
+                RTSPClient* client = static_cast<RTSPClient*>(medium);
+                shutdownStream(client);
+            }
+        }
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -43,11 +108,12 @@ int main(int argc, char* argv[])
 
     using TaskCommandQueue = boost::lockfree::spsc_queue<TaskCommand>;
     TaskCommandQueue q{100};
-    TaskCommandQueue &_taskQueue = q;
-    //std::cout << _taskQueue.empty();
+
     DynamicTaskScheduler *scheduler = DynamicTaskScheduler::createNew(q);
 
-    auto *env = BasicUsageEnvironment::createNew(*scheduler);
+    PerformanceEnvironment perfEnv{*scheduler};
+    //auto *env = BasicUsageEnvironment::createNew(*scheduler);
+    auto *env = perfEnv.env;
 
     *env << "LIVE555 Proxy Server\n"
          << "\t(LIVE555 Streaming Media library version "
@@ -64,72 +130,25 @@ int main(int argc, char* argv[])
     scheduler->addDisconnectListener(onDisconnectRequested);
 
     // Now, enter the event loop:
-    std::thread rtspTaskThread([env]() {
+    //std::thread rtspTaskThread([env]() {
+    std::thread rtspTaskThread([&perfEnv]() {
         int64_t uSecsToDelay = 3 + 1000 * 1000;
-        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) Statistics::calculateStatistics, env);
+        auto *env = perfEnv.env;
+        //env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) Statistics::calculateStatistics, env);
+        env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) Statistics::calculateStatistics, &perfEnv);
+        perfEnv.listingTaskId = env->taskScheduler().createEventTrigger((TaskFunc*) listClients);
+        perfEnv.removeAllId = env->taskScheduler().createEventTrigger((TaskFunc*) removeAllClients);
         env->taskScheduler().doEventLoop(); // does not return
     });
 
+    RemoteCommandInterpreter remoteInterpreter{q};
+    LocalCommandInterpreter localInterpreter{q, perfEnv};
     std::string request;
     do {
+        std::cout << "rtspPref > ";
         std::getline(std::cin, request);
-        try {
-            //std::cout << request;
-            //auto requestCompare = "{\"url\":\"rtsp://192.168.15.105:554/onvif/profile3/media.smp\", \"user\":\"admin\", \"password\":\"q1w2e3r4@\"}";
-            //std::cout << request.compare(requestCompare) << std::endl;
-            auto jsonObj = json::parse(request);
-            if (jsonObj["cmd"].is_string()) {
-                auto const cmd = jsonObj["cmd"].get<std::string>();
-                if (cmd == "quit") {
-                    break;
-                }
-                if (cmd == "removeOne")   {
-                    q.push({TaskCommand::RemoveOne});
-                    continue;
-                }
-                if (cmd == "add") {
-                    if (jsonObj["param"].is_object())   {
-                        const auto param = jsonObj["param"].get<json>();
-                        if (!param.contains("url"))  {
-                            continue;
-                        }
-                        auto const url = param["url"].get<std::string>();
-                        if (!url.empty()) {
-                            auto const user = param.contains("user") ? param["user"].get<std::string>() : "" ;
-                            auto const password = param.contains("password") ? param["password"].get<std::string>() : "";
-                            q.push({TaskCommand::Connect, url, user, password});
-                        }
-                    }
-                    continue;
-                }
-                if (cmd == "disconnect")    {
-                    if (jsonObj["param"].is_string()) {
-                        auto const nameToDisconnect = jsonObj["param"].get<std::string>();
-                        q.push({TaskCommand::Disconnect, nameToDisconnect});
-                    }
-                    continue;
-                }
-            }
-//
-//            if (jsonObj["disconnect"].is_string()) {
-//                auto const nameToDisconnect = jsonObj["disconnect"].get<std::string>();
-//                q.push({TaskCommand::Disconnect, nameToDisconnect});
-//                continue;
-//            }
-
-
-//            auto const url = jsonObj["url"].get<std::string>();
-//            if (!url.empty()) {
-//                auto const user = jsonObj["user"].is_null() ? "" : jsonObj["user"].get<std::string>();
-//                auto const password = jsonObj["password"].is_null() ? "" : jsonObj["password"].get<std::string>();
-//                q.push({TaskCommand::Connect, url, user, password});
-//            }
-
-        } catch (jsonException &e) {
-            std::cerr << "exception, " << __func__ << ", " << __LINE__ << "\n";
-            std::cerr << "request: " << request << "\n";
-            std::cerr << e.what() << "\n";
-        }
+        if (localInterpreter.handleRequest(request) == false) break;
+        //if (remoteInterpreter.handleRequest(request) == false) break;
     } while (true);
 
     q.push({TaskCommand::Quit});

@@ -38,8 +38,12 @@ private:
     MediaSubsession& fSubsession;
     char* fStreamId;
     std::chrono::system_clock::time_point startPoint;
+    double _frameRate = 0;
 
 public:
+    void updateMeasuredFrameRate(double frameRate) { _frameRate = frameRate; }
+    double frameRate() const { return _frameRate; }
+
     int frameCount = 0;
 };
 

@@ -7,4 +7,4 @@ project ("rtspPerfUsingLive555")
 
 # 하위 프로젝트를 포함합니다.
 add_subdirectory ("rtspPerfUsingLive555")
-add_subdirectory ("testRtspClient")
+#add_subdirectory ("testRtspClient")

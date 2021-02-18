@@ -23,7 +23,7 @@ void OnDisconnectRequested::operator()(std::string nameToDisconnect)
         if (medium->isRTSPClient()) {
             RTSPClient *client = static_cast<RTSPClient *>(medium);
             *env << "shutdown stream\n";
-            shutdownStream(client, 0);
+            shutdownStream(client, ExitCode::ByUser);
         }
     }
 }

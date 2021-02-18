@@ -1,6 +1,7 @@
 ﻿# CMakeList.txt: rtspPerfUsingLive555에 대한 CMake 프로젝트, 여기에 소스를 포함하고
 # 프로젝트 특정 논리를 정의합니다.
 #
+
 cmake_minimum_required (VERSION 3.8)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -19,7 +20,30 @@ find_path(live555Header UsageEnvironment.hh REQUIRED)
 #message(${liveMediaLib} ${groupsockLib} ${UsageEnvironmentLib} ${BasicUsageEnvironmentLib})
 
 # 이 프로젝트의 실행 파일에 소스를 추가합니다.
-add_executable (rtspPerfUsingLive555 "rtspPerfUsingLive555.cpp"  "DynamicTaskScheduler.h" "DynamicTaskScheduler.cpp" "TaskCommand.h" PerfCheckRtspClient.cpp PerfCheckRtspClient.h RawStreamPerfCheckSink.cpp RawStreamPerfCheckSink.h OnConnectRequested.cpp OnConnectRequested.h OnDisconnectRequested.cpp OnDisconnectRequested.h OnRemoveOneRequested.cpp OnRemoveOneRequested.h Statistics.cpp Statistics.h)
+add_executable (rtspPerfUsingLive555
+		rtspPerfUsingLive555.cpp
+		DynamicTaskScheduler.h
+		DynamicTaskScheduler.cpp
+		TaskCommand.h
+		PerfCheckRtspClient.cpp
+		PerfCheckRtspClient.h
+		RawStreamPerfCheckSink.cpp
+		RawStreamPerfCheckSink.h
+		OnConnectRequested.cpp
+		OnConnectRequested.h
+		OnDisconnectRequested.cpp
+		OnDisconnectRequested.h
+		OnRemoveOneRequested.cpp
+		OnRemoveOneRequested.h
+		Statistics.cpp
+		Statistics.h
+		RemoteCommandInterpreter.cpp
+		RemoteCommandInterpreter.h
+		LocalCommandInterpreter.cpp
+		LocalCommandInterpreter.h
+		PerformanceEnvironment.cpp
+		PerformanceEnvironment.h
+		)
 if (WIN32)
 add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif(WIN32)

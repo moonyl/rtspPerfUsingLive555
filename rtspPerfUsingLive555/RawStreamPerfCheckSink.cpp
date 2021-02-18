@@ -22,8 +22,10 @@ void RawStreamPerfCheckSink::afterGettingFrame(void *clientData, unsigned int fr
 {
     RawStreamPerfCheckSink* sink = (RawStreamPerfCheckSink*)clientData;
     sink->afterGettingFrame(frameSize, numTruncatedBytes, presentationTime, durationInMicroseconds);
+
 }
 
+#include <sstream>
 //#define DEBUG_PRINT_EACH_RECEIVED_FRAME
 void RawStreamPerfCheckSink::afterGettingFrame(unsigned int frameSize, unsigned int numTruncatedBytes,
                                                struct timeval presentationTime, unsigned int durationInMicroseconds)
@@ -47,6 +49,11 @@ void RawStreamPerfCheckSink::afterGettingFrame(unsigned int frameSize, unsigned 
 //    char frameKind[3]; // used to output the 'microseconds' part of the presentation time
 //    sprintf(frameKind, "%02x", fReceiveBuffer[0] & 0x1f);
 //    envir() << "frame kind: " << frameKind << "\n";
+
+//    auto sec = presentationTime.tv_sec;
+//    std::stringstream sstr;
+//    sstr << "timestamp: " << presentationTime.tv_sec << ", " << presentationTime.tv_usec;
+//    envir() << sstr.str().c_str() << "\n";
     auto kind = fReceiveBuffer[0] & 0x1f;
     if (kind == 0x1 || kind == 0x5 )    {
         frameCount++;

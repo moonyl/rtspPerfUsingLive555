@@ -13,16 +13,17 @@ public:
     virtual ~StreamClientState();
 
 public:
-    MediaSubsessionIterator* iter;
-    MediaSession* session;
-    MediaSubsession* subsession;
-    TaskToken streamTimerTask;
-    double duration;
+    MediaSubsessionIterator* iter = nullptr;
+    MediaSession* session = nullptr;
+    MediaSubsession* subsession = nullptr;
+    TaskToken streamTimerTask = nullptr;
+    double duration = 0;
 };
 
 class PerfCheckRtspClient: public RTSPClient {
 
     RawStreamPerfCheckSink* videoSink{nullptr};
+
 public:
     static PerfCheckRtspClient* createNew(UsageEnvironment& env, char const* rtspURL,
                                     int verbosityLevel = 0,
@@ -40,6 +41,7 @@ protected:
 
 public:
     StreamClientState scs;
+
     static unsigned int rtspClientCount;
 
 };
@@ -48,5 +50,11 @@ RTSPClient* openURL(UsageEnvironment& env, char const* progName, char const* rts
              char const *user = nullptr, char const *password = nullptr);
 
 
-void shutdownStream(RTSPClient* rtspClient, int exitCode = 1);
+enum ExitCode
+{
+    ByUser,
+    Error,
+    Retry,
+};
+void shutdownStream(RTSPClient* rtspClient, int exitCode = ExitCode::Error);
 

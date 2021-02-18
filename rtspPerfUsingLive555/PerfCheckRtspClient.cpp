@@ -78,6 +78,7 @@ void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultS
 
         if (resultCode != 0) {
             env << *rtspClient << "Failed to get a SDP description: " << resultString << "\n";
+            // it is possible to be confused owing to Load Balancer configuration
             delete[] resultString;
             break;
         }
@@ -105,7 +106,7 @@ void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultS
     } while (0);
 
     // An unrecoverable error occurred with this stream.
-    shutdownStream(rtspClient);
+    shutdownStream(rtspClient, ExitCode::Retry);
 }
 
 static void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultString);
@@ -155,6 +156,10 @@ void shutdownStream(RTSPClient* rtspClient, int exitCode) {
     UsageEnvironment& env = rtspClient->envir(); // alias
     StreamClientState& scs = ((PerfCheckRtspClient*)rtspClient)->scs; // alias
 
+    if (exitCode == ExitCode::Retry)    {
+        openURL(env, "rtspPerfUsingLive555", rtspClient->url());
+    }
+
     // First, check whether any subsessions have still to be closed:
     if (scs.session != NULL) {
         Boolean someSubsessionsWereActive = False;
@@ -181,22 +186,22 @@ void shutdownStream(RTSPClient* rtspClient, int exitCode) {
         }
     }
 
-    try {
-        using json = nlohmann::json;
-        json state;
-
-        state["name"] = rtspClient->name();
-        state["url"] = rtspClient->url();
-        state["byUser"] = exitCode == 0;
-
-        json j;
-        j["result"] = "disconnected";
-        j["state"] = state;
-        std::cout << j.dump() << std::endl;
-    } catch(std::exception &e)   {
-        env << "exception, closing: name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
-        env << e.what() << "\n";
-    }
+//    try {
+//        using json = nlohmann::json;
+//        json state;
+//
+//        state["name"] = rtspClient->name();
+//        state["url"] = rtspClient->url();
+//        state["byUser"] = exitCode == 0;
+//
+//        json j;
+//        j["result"] = "disconnected";
+//        j["state"] = state;
+//        std::cout << j.dump() << std::endl;
+//    } catch(std::exception &e)   {
+//        env << "exception, closing: name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
+//        env << e.what() << "\n";
+//    }
 
     env << *rtspClient << "Closing the stream.\n";
     Medium::close(rtspClient);
@@ -313,6 +318,7 @@ void subsessionByeHandler(void* clientData, char const* reason) {
     subsessionAfterPlaying(subsession);
 }
 
+
 static void streamTimerHandler(void* clientData);
 void continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultString) {
     Boolean success = False;
@@ -345,20 +351,20 @@ void continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultStrin
 
         success = True;
 
-        try {
-            using json = nlohmann::json;
-            json j;
-            j["result"] = "added";
-            json state;
-            state["name"] = rtspClient->name();
-            state["url"] = rtspClient->url();
-            j["state"] = state;
-
-            std::cout << j.dump() << std::endl;
-        } catch(std::exception &e)  {
-            env << "exception, client added, name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
-            env << e.what() << "\n";
-        }
+//        try {
+//            using json = nlohmann::json;
+//            json j;
+//            j["result"] = "added";
+//            json state;
+//            state["name"] = rtspClient->name();
+//            state["url"] = rtspClient->url();
+//            j["state"] = state;
+//
+//            std::cout << j.dump() << std::endl;
+//        } catch(std::exception &e)  {
+//            env << "exception, client added, name: " << rtspClient->name() << ", url: " << rtspClient->url() << "\n";
+//            env << e.what() << "\n";
+//        }
 
     } while (0);
     delete[] resultString;

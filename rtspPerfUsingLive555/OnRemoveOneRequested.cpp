@@ -24,7 +24,7 @@ void OnRemoveOneRequested::operator()()
             if (found)  {
                 if (medium->isRTSPClient()) {
                     RTSPClient* client = static_cast<RTSPClient*>(medium);
-                    shutdownStream(client);
+                    shutdownStream(client, ExitCode::ByUser);
                     break;
                 }
             }

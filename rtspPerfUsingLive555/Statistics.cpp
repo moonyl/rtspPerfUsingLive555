@@ -8,11 +8,22 @@
 #include <BasicUsageEnvironment.hh>
 #include <liveMedia.hh>
 #include "PerfCheckRtspClient.h"
-
+#include <queue>
+#include <deque>
+#include "PerformanceEnvironment.h"
+#include <mutex>
 double Statistics::InputFps = 30.0;
+
+using json = nlohmann::json;
+//std::deque<std::string> statsRecords;
+//std::deque<std::string> abnormalRecords;
+
+
 void Statistics::calculateStatistics(void *clientData)
 {
-    UsageEnvironment *env = static_cast<UsageEnvironment *>(clientData);
+    //UsageEnvironment *env = static_cast<UsageEnvironment *>(clientData);
+    PerformanceEnvironment *perfEnv = static_cast<PerformanceEnvironment *>(clientData);
+    UsageEnvironment *env = perfEnv->env;
 
     static std::chrono::system_clock::time_point intervalStart = std::chrono::system_clock::now();
     std::chrono::duration<double> sec = std::chrono::system_clock::now() - intervalStart;
@@ -34,12 +45,16 @@ void Statistics::calculateStatistics(void *clientData)
                     clientCount++;
 
                     auto *sink = (static_cast<PerfCheckRtspClient *>(medium))->perfSink();
+                    if (!sink)  {
+                        continue;
+                    }
                     totalFrame += sink->frameCount;
                     auto const frPerCh = sink->frameCount / sec.count();
+                    sink->updateMeasuredFrameRate(frPerCh);
 
                     if (frPerCh < 10)   {
                         try {
-                            using json = nlohmann::json;
+
                             json j;
                             j["result"] = "abnormal";
                             json state;
@@ -49,7 +64,17 @@ void Statistics::calculateStatistics(void *clientData)
 
                             j["state"] = state;
 
-                            std::cout << j.dump() << std::endl;
+                            {
+                                std::lock_guard<std::mutex> lockGuard(perfEnv->abnRecMutex);
+                                if (perfEnv->abnormalRecords.size() > 100)   {
+                                    perfEnv->abnormalRecords.pop_front();
+                                }
+
+                                perfEnv->abnormalRecords.push_back(j.dump());
+                            }
+
+
+                            //std::cout << j.dump() << std::endl;
                         } catch(std::exception &e)  {
                             *env << "exception, " << __func__ << ", " << __LINE__ << "\n";
                             *env << e.what() << "\n";
@@ -64,7 +89,6 @@ void Statistics::calculateStatistics(void *clientData)
         auto const frameRate = totalFrame / sec.count();
 
         try {
-            using json = nlohmann::json;
             json j;
             j["result"] = "stats";
 
@@ -74,7 +98,17 @@ void Statistics::calculateStatistics(void *clientData)
             state["expected"] = round(PerfCheckRtspClient::rtspClientCount * InputFps * 10) / 10;
             j["state"] = state;
 
-            std::cout << j.dump() << std::endl;
+            //std::cout << j.dump() << std::endl;
+            {
+                std::lock_guard<std::mutex> lockGuard(perfEnv->statsMutex);
+                if (perfEnv->statsRecords.size() > 100)  {
+                    perfEnv->statsRecords.pop_front();
+                }
+                perfEnv->statsRecords.push_back(j.dump());
+            }
+//            for (auto const &record : statsRecords) {
+//                std::cout << record << std::endl;
+//            }
         } catch(std::exception& e)  {
             *env << "exception, " << __func__ << ", " << __LINE__ << "\n";
             *env << e.what() << "\n";
@@ -85,5 +119,6 @@ void Statistics::calculateStatistics(void *clientData)
     }
 
     int64_t uSecsToDelay = 3 + 1000 * 1000;
-    env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatistics, env);
+    //env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatistics, env);
+    env->taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc *) calculateStatistics, perfEnv);
 }
