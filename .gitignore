@@ -2,3 +2,6 @@
 /out/
 /.vs/
 /.idea/
+/rtspPerfUsingLive555/.idea/
+/rtspPerfUsingLive555/cmake-build-debug/
+live555
